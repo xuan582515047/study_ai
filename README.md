@@ -6,10 +6,10 @@
 - **AI**: DeepSeek API + Qwen API
 - **Java版本**: 17
 ## 文件说明
-.mvn:Maven配置文件（跑项目之前要下载Maven）
-database:数据库配置文件（mysql）
-src:项目后端文件
-web:项目前端文件
+- **.mvn**: Maven配置文件（跑项目之前要下载Maven）
+- **database**: 数据库配置文件（mysql）
+- **src**: 项目后端文件
+- **web**: 项目前端文件
 ## 快速启动
 
 ### 1. 数据库准备
