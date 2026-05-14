@@ -12,7 +12,7 @@
 ```bash
 mysql -u root -p < database/schema.sql
 数据库的密码需要调整为自己的本地数据库密码！！！！！
-编辑'src/main/resources/application.yml'第10行修改
+编辑'src/main/resources/application.yml'第10行修改;
 ```
 
 ### 2. 配置DeepSeek API Key
