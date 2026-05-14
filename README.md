@@ -3,7 +3,7 @@
 ## 技术栈
 - **后端**: Spring Boot 3.2.12 + MyBatis-Plus + MySQL + WebSocket
 - **前端**: Vue3 + Element Plus + Vite
-- **AI**: DeepSeek API
+- **AI**: DeepSeek API + Qwen API
 - **Java版本**: 17
 
 ## 快速启动
@@ -11,6 +11,8 @@
 ### 1. 数据库准备
 ```bash
 mysql -u root -p < database/schema.sql
+数据库的密码需要调整为自己的本地数据库密码！！！！！
+编辑'src/main/resources/application.yml'第10行修改
 ```
 
 ### 2. 配置DeepSeek API Key
