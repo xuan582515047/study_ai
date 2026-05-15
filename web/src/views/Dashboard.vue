@@ -1,15 +1,15 @@
 <template>
-  <div class="welcome-dashboard">
-    <!-- 欢迎横幅 -->
-    <div class="welcome-banner">
-      <div class="welcome-text">
-        <h1 class="welcome-title">欢迎使用<span class="highlight">'智创学伴'</span>系统</h1>
-        <p class="welcome-subtitle">
-          {{ userStore.userInfo?.nickname || userStore.userInfo?.username || '同学' }}，今天想开始哪项学习任务？
-        </p>
-      </div>
-      <div class="welcome-decoration">
-        <el-icon :size="80" color="#fff"><Reading /></el-icon>
+  <div class="dashboard-page">
+    <!-- ===== AI智能辅导 对话窗口（占满全屏） ===== -->
+    <div class="tutor-section">
+      <div class="tutor-chat-wrapper">
+        <AgentChat
+          title="AI智能辅导"
+          subtitle="你可以问我任何学习相关的问题，我会根据你的学习画像提供个性化辅导。"
+          placeholder="输入你的学习问题..."
+          agent-type="tutor"
+          show-welcome
+        />
       </div>
     </div>
 
@@ -46,14 +46,13 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
-import { useUserStore } from '@/store/userStore'
 import {
-  Reading, ChatDotRound, Monitor, Document,
-  Edit, Share, ArrowRight
+  ChatDotRound, Monitor, Document,
+  Edit, Share, ArrowRight, Collection
 } from '@element-plus/icons-vue'
+import AgentChat from '@/components/AgentChat.vue'
 
 const router = useRouter()
-const userStore = useUserStore()
 
 const agents = [
   {
@@ -109,49 +108,32 @@ const goToAgent = (path) => {
 </script>
 
 <style scoped>
-.welcome-dashboard {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 10px 0;
-}
-
-/* ===== 欢迎横幅 ===== */
-.welcome-banner {
+.dashboard-page {
+  width: 100%;
+  min-height: calc(100vh - 100px);
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 16px;
-  padding: 40px 48px;
-  margin-bottom: 40px;
-  box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
-  color: #fff;
+  flex-direction: column;
 }
 
-.welcome-title {
-  font-size: 32px;
-  font-weight: 700;
-  margin: 0 0 12px 0;
-  letter-spacing: 1px;
+/* ===== AI智能辅导 对话区域 ===== */
+.tutor-section {
+  flex: 1;
+  min-height: calc(100vh - 100px);
+  display: flex;
+  flex-direction: column;
 }
 
-.highlight {
-  background: linear-gradient(90deg, #f093fb, #f5576c);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  font-weight: 800;
+.tutor-chat-wrapper {
+  flex: 1;
+  min-height: calc(100vh - 100px);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
-.welcome-subtitle {
-  font-size: 16px;
-  opacity: 0.9;
-  margin: 0;
-}
-
-.welcome-decoration {
-  flex-shrink: 0;
-  opacity: 0.6;
+.tutor-chat-wrapper :deep(.agent-chat) {
+  height: calc(100vh - 100px);
+  min-height: calc(100vh - 100px);
 }
 
 /* ===== 智能体区域 ===== */
@@ -160,16 +142,18 @@ const goToAgent = (path) => {
 }
 
 .section-title {
-  font-size: 24px;
+  font-size: 32px;
   font-weight: 700;
   color: #303133;
   margin: 0 0 6px 0;
+  text-align: center;
 }
 
 .section-desc {
   color: #909399;
   margin: 0 0 24px 0;
-  font-size: 14px;
+  font-size: 18px;
+  text-align: center;
 }
 
 .agents-grid {

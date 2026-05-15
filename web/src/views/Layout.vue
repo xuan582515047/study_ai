@@ -33,10 +33,7 @@
           <el-icon><MapLocation /></el-icon>
           <span>学习路径</span>
         </el-menu-item>
-        <el-menu-item index="/tutor">
-          <el-icon><ChatDotRound /></el-icon>
-          <span>智能辅导</span>
-        </el-menu-item>
+
         <el-menu-item index="/assessment">
           <el-icon><TrendCharts /></el-icon>
           <span>学习评估</span>

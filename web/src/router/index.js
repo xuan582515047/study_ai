@@ -23,7 +23,7 @@ const routes = [
       { path: 'profile', component: () => import('../views/ProfileBuild.vue'), meta: { title: '画像构建', noProfileCheck: true } },
       { path: 'resource', component: () => import('../views/ResourceGen.vue'), meta: { title: '资源生成' } },
       { path: 'path', component: () => import('../views/LearningPath.vue'), meta: { title: '学习路径' } },
-      { path: 'tutor', component: () => import('../views/SmartTutor.vue'), meta: { title: '智能辅导' } },
+
       { path: 'assessment', component: () => import('../views/Assessment.vue'), meta: { title: '学习评估' } },
       { path: 'profile-center', component: () => import('../views/ProfileCenter.vue'), meta: { title: '个人中心' } },
       { path: 'agent-tutor', component: () => import('../views/MultiModalTutor.vue'), meta: { title: '问答导师' } },

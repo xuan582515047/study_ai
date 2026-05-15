@@ -1,6 +1,47 @@
 <template>
   <div class="agent-chat">
-    <!-- 左侧历史对话侧边栏 -->
+    <!-- ===== 欢迎模式（用户未交互时显示） ===== -->
+    <div v-if="showWelcome && welcomeMode" class="welcome-screen" :style="welcomeStyle">
+      <div class="welcome-content">
+        <!-- AI 头像 -->
+        <div class="welcome-avatar">
+          <el-avatar :size="72" icon="ChatDotRound" :style="{ background: agentConfig.avatarStyle }" />
+        </div>
+        <!-- 问候语 -->
+        <h1 class="welcome-greeting">
+          {{ welcomeGreeting }}
+        </h1>
+        <!-- 居中输入框 -->
+        <div class="welcome-input-area">
+          <div class="welcome-input-row">
+            <el-input
+              v-model="inputText"
+              type="textarea"
+              :rows="1"
+              :placeholder="agentConfig.placeholder"
+              @keydown.enter.prevent="handleWelcomeSend"
+              class="welcome-input"
+              resize="none"
+            />
+            <el-button type="primary" :icon="Promotion" :loading="loading" @click="handleWelcomeSend" circle />
+          </div>
+          <!-- 快捷推荐标签 -->
+          <div class="suggestion-tags">
+            <el-tag
+              v-for="tag in suggestionTags"
+              :key="tag"
+              class="suggestion-tag"
+              @click="sendSuggestion(tag)"
+            >
+              {{ tag }}
+            </el-tag>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 正常聊天模式 ===== -->
+    <template v-else>
     <div class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
       <div class="sidebar-header">
         <el-button type="primary" class="new-chat-btn" @click="newChat">
@@ -43,7 +84,7 @@
             <el-icon><Fold /></el-icon>
           </el-button>
           <div class="header-icon">
-            <el-avatar :size="36" icon="ChatDotRound" style="background: #19c37d" />
+            <el-avatar :size="36" icon="ChatDotRound" :style="{ background: agentConfig.themeColor }" />
           </div>
           <div class="header-info">
             <div class="header-title">{{ title }}</div>
@@ -74,7 +115,7 @@
             <!-- AI Message -->
             <div v-if="msg.role === 'assistant'" class="message-row">
               <div class="msg-avatar">
-                <el-avatar :size="34" icon="ChatDotRound" style="background: #19c37d" />
+                <el-avatar :size="34" icon="ChatDotRound" :style="{ background: agentConfig.themeColor }" />
               </div>
               <div class="msg-body">
                 <div class="msg-bubble ai">
@@ -116,7 +157,7 @@
           <div v-if="loading" class="message-wrapper assistant">
             <div class="message-row">
               <div class="msg-avatar">
-                <el-avatar :size="34" icon="ChatDotRound" style="background: #19c37d" />
+                <el-avatar :size="34" icon="ChatDotRound" :style="{ background: agentConfig.themeColor }" />
               </div>
               <div class="msg-body">
                 <div class="msg-bubble ai loading-bubble">
@@ -159,6 +200,7 @@
         </div>
       </div>
     </div>
+  </template>
   </div>
 </template>
 
@@ -181,7 +223,8 @@ const props = defineProps({
   title: { type: String, required: true },
   subtitle: { type: String, default: '' },
   placeholder: { type: String, default: '请输入你的问题...' },
-  agentType: { type: String, required: true }
+  agentType: { type: String, required: true },
+  showWelcome: { type: Boolean, default: false }
 })
 
 const userStore = useUserStore()
@@ -196,6 +239,65 @@ const msgContainer = ref(null)
 const fileInputRef = ref(null)
 const uploadedFiles = ref([])
 
+// ========== 欢迎模式 ==========
+const welcomeMode = ref(true)
+
+// ========== 智能体配置（按 agentType 区分） ==========
+const agentConfigMap = {
+  tutor: {
+    greeting: '多模态问答导师',
+    description: '我可以帮你解答各类学科问题，提供结构化解答、图解建议与智能追问，让复杂概念变得简单易懂。',
+    tags: ['解释微积分中的导数概念', '简述动态规划的核心思想', 'TCP三次握手的过程', '帮我制定一份期末复习计划'],
+    avatarStyle: 'linear-gradient(135deg, #19c37d, #10a56a)',
+    themeColor: '#19c37d',
+    placeholder: '输入你想了解的学习问题...'
+  },
+  ppt: {
+    greeting: 'PPT智能生成师',
+    description: '告诉我你想做的PPT主题，我来为你生成完整的PPT大纲和每页内容，支持一键导出为PPTX文件。',
+    tags: ['生成一份计算机网络PPT大纲', '制作Java入门PPT', '生成深度学习PPT', '制作一份关于人工智能的PPT'],
+    avatarStyle: 'linear-gradient(135deg, #e6a23c, #d48806)',
+    themeColor: '#e6a23c',
+    placeholder: '输入你想生成的PPT主题...'
+  },
+  doc: {
+    greeting: '知识点深度讲解文档生成师',
+    description: '我可以围绕任意知识点，为你生成涵盖背景、原理、推导、应用与误区的深度讲解文档。',
+    tags: ['详解拉格朗日定理', '讲解决策树算法', '深入讲解HashMap底层原理', '讲解微积分基本定理'],
+    avatarStyle: 'linear-gradient(135deg, #409eff, #1661ab)',
+    themeColor: '#409eff',
+    placeholder: '输入你想深入学习的知识点...'
+  },
+  quiz: {
+    greeting: '同类考题智能生成师',
+    description: '上传或描述一道题目，我能分析题型并生成同类练习题，附上详细解析，助你高效备考。',
+    tags: ['出几道中考数学同类题', '生成导数练习题', '出几道英语完形填空题', '生成几道物理力学题'],
+    avatarStyle: 'linear-gradient(135deg, #f56c6c, #c45656)',
+    themeColor: '#f56c6c',
+    placeholder: '上传或描述一道题目...'
+  },
+  mindmap: {
+    greeting: '知识框架思维导图生成师',
+    description: '告诉我你想梳理的知识领域，我来帮你生成结构化思维导图（Markdown/Mermaid），让知识体系一目了然。',
+    tags: ['梳理Java面向对象知识框架', '梳理中国古代史知识框架', '梳理计算机网络知识框架', '梳理机器学习知识体系'],
+    avatarStyle: 'linear-gradient(135deg, #673ab7, #512da8)',
+    themeColor: '#673ab7',
+    placeholder: '输入你想梳理的知识领域...'
+  }
+}
+
+// 当前智能体配置（根据 props.agentType 动态返回）
+const agentConfig = computed(() => {
+  return agentConfigMap[props.agentType] || agentConfigMap.tutor
+})
+
+const suggestionTags = computed(() => agentConfig.value.tags)
+const welcomeStyle = computed(() => ({
+  height: '100%',
+  width: '100%',
+  '--theme-color': agentConfig.value.themeColor
+}))
+
 // ========== 侧边栏状态 ==========
 const sidebarCollapsed = ref(false)
 const sessions = ref([])
@@ -204,6 +306,15 @@ const currentSessionId = ref('')
 
 // ========== 计算属性 ==========
 const studentId = computed(() => userStore.userInfo?.id || null)
+
+// 欢迎界面的问候语
+const welcomeGreeting = computed(() => {
+  const nickname = userStore.userInfo?.nickname || userStore.userInfo?.username
+  if (nickname) {
+    return `${nickname}，今天想学点什么新东西？`
+  }
+  return '今天想学点什么新东西？'
+})
 
 // ========== UUID 生成 ==========
 const generateUUID = () => {
@@ -273,7 +384,7 @@ const switchToSession = (sessionId) => {
 const newChat = async () => {
   currentSessionId.value = generateUUID()
   messages.value = []
-  messages.value.push({ role: 'assistant', content: welcomeMessage.value })
+  welcomeMode.value = props.showWelcome
   await fetchSessions()
 }
 
@@ -338,6 +449,21 @@ const buildContext = () => {
     return text
   })
   return ctx.join('\n\n')
+}
+
+// ========== 欢迎模式 - 发送消息（切换至聊天模式） ==========
+const handleWelcomeSend = () => {
+  if (!inputText.value.trim() && uploadedFiles.value.length === 0) return
+  welcomeMode.value = false
+  nextTick(() => {
+    sendMessage()
+  })
+}
+
+// ========== 欢迎模式 - 点击快捷建议 ==========
+const sendSuggestion = (tag) => {
+  inputText.value = tag
+  handleWelcomeSend()
 }
 
 // ========== 发送消息 ==========
@@ -518,7 +644,7 @@ const downloadAsPPTX = async (content) => {
   }
 }
 
-// ========== 清空当前对话 ==========
+// ========== 清空当前对话（回到欢迎页） ==========
 const confirmClear = () => {
   if (messages.value.length === 0) return
   ElMessageBox.confirm('确定要清空当前对话吗？', '确认', {
@@ -528,7 +654,7 @@ const confirmClear = () => {
   }).then(() => {
     messages.value = []
     uploadedFiles.value = []
-    messages.value.push({ role: 'assistant', content: welcomeMessage.value })
+    welcomeMode.value = props.showWelcome
     ElMessage.success('对话已清空')
   }).catch(() => {})
 }
@@ -537,22 +663,23 @@ const confirmClear = () => {
 onMounted(async () => {
   fetchKnowledgeBases()
 
+  // 根据 showWelcome prop 决定是否显示欢迎界面
+  welcomeMode.value = props.showWelcome
+
   if (studentId.value) {
-    // 有登录用户 - 从后端加载会话列表
+    // 有登录用户 - 先从后端加载会话列表（后台缓存）
     await fetchSessions()
     if (sessions.value.length > 0) {
-      // 自动加载第一个会话
+      // 后台加载第一个会话的消息到缓存中
       currentSessionId.value = sessions.value[0].sessionId
       await loadSessionMessages(currentSessionId.value)
     } else {
-      // 无历史会话，显示欢迎消息
+      // 无历史会话，预生成新会话ID
       currentSessionId.value = generateUUID()
-      messages.value.push({ role: 'assistant', content: welcomeMessage.value })
     }
   } else {
-    // 未登录，显示欢迎消息
+    // 未登录，预生成新会话ID
     currentSessionId.value = generateUUID()
-    messages.value.push({ role: 'assistant', content: welcomeMessage.value })
   }
 })
 </script>
@@ -560,13 +687,14 @@ onMounted(async () => {
 <style scoped>
 /* ========== 布局 ========== */
 .agent-chat {
-  height: calc(100vh - 120px);
+  height: 100%;
   display: flex;
   padding: 0;
   background: #f0f2f5;
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  min-height: 0;
 }
 
 /* ========== 左侧边栏 ========== */
@@ -1061,5 +1189,158 @@ onMounted(async () => {
 
 .markdown-body :deep(strong) {
   font-weight: 600;
+}
+
+/* ===== 欢迎模式 ===== */
+.welcome-screen {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #f8f9ff 0%, #ffffff 100%);
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: calc(100vh - 100px);
+  min-height: calc(100vh - 100px);
+}
+
+.welcome-screen::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle at 30% 30%, rgba(102, 126, 234, 0.04) 0%, transparent 50%),
+              radial-gradient(circle at 70% 70%, rgba(118, 75, 162, 0.04) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.welcome-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 60px;
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 800px;
+}
+
+.welcome-avatar {
+  margin-bottom: 24px;
+  animation: welcomeFloat 3s ease-in-out infinite;
+}
+
+@keyframes welcomeFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.welcome-greeting {
+  font-size: 38px;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 12px 0;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.welcome-brand {
+  color: var(--theme-color, #19c37d);
+  display: inline-block;
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .welcome-brand {
+    background: var(--brand-bg);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
+
+.welcome-sub {
+  font-size: 16px;
+  color: #909399;
+  margin: 0 0 44px 0;
+  text-align: center;
+  max-width: 500px;
+  line-height: 1.6;
+}
+
+.welcome-input-area {
+  width: 100%;
+  max-width: 700px;
+}
+
+.welcome-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 10px 10px 10px 24px;
+  border: 1px solid #e4e7ed;
+  transition: border-color 0.25s, box-shadow 0.25s;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.welcome-input-row:focus-within {
+  border-color: var(--theme-color, #667eea);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-color, #667eea) 12%, transparent), 0 2px 12px color-mix(in srgb, var(--theme-color, #667eea) 8%, transparent);
+}
+
+.welcome-input {
+  flex: 1;
+}
+
+.welcome-input :deep(.el-textarea__inner) {
+  border: none !important;
+  background: transparent !important;
+  font-size: 16px;
+  padding: 10px 0;
+  min-height: 28px;
+  max-height: 150px;
+  box-shadow: none !important;
+  resize: none;
+}
+
+.welcome-input :deep(.el-textarea__inner:focus) {
+  box-shadow: none !important;
+}
+
+.welcome-input :deep(.el-textarea__inner::placeholder) {
+  color: #c0c4cc;
+}
+
+.suggestion-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+  justify-content: center;
+}
+
+.suggestion-tag {
+  cursor: pointer;
+  font-size: 14px;
+  padding: 8px 20px;
+  border-radius: 22px;
+  border: 1px solid #e8e8e8;
+  background: #ffffff;
+  color: #606266;
+  transition: all 0.2s;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.suggestion-tag:hover {
+  border-color: var(--theme-color, #667eea);
+  color: var(--theme-color, #667eea);
+  background: color-mix(in srgb, var(--theme-color, #667eea) 6%, #fff);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--theme-color, #667eea) 12%, transparent);
 }
 </style>
