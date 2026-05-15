@@ -1,9 +1,47 @@
 <template>
   <div class="agent-chat">
+    <!-- 左侧历史对话侧边栏 -->
+    <div class="sidebar" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
+      <div class="sidebar-header">
+        <el-button type="primary" class="new-chat-btn" @click="newChat">
+          <el-icon><Plus /></el-icon>
+          <span>开启新的对话</span>
+        </el-button>
+      </div>
+      <div class="sidebar-list" v-loading="sessionsLoading">
+        <div
+          v-for="session in sessions"
+          :key="session.sessionId"
+          :class="['session-item', { active: currentSessionId === session.sessionId }]"
+          @click="switchToSession(session.sessionId)"
+        >
+          <div class="session-info">
+            <div class="session-title" :title="session.title">{{ session.title }}</div>
+            <div class="session-meta">{{ session.messageCount }} 条消息</div>
+          </div>
+          <el-button
+            text
+            size="small"
+            :icon="Delete"
+            class="delete-btn"
+            @click.stop="confirmDeleteSession(session.sessionId)"
+          />
+        </div>
+        <div v-if="!sessions.length && !sessionsLoading" class="empty-sessions">
+          <el-icon :size="40" color="#ccc"><ChatDotRound /></el-icon>
+          <p>暂无历史对话</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 聊天区域 -->
     <div class="chat-container">
       <!-- Header -->
       <div class="chat-header">
         <div class="header-left">
+          <el-button text class="sidebar-toggle" @click="sidebarCollapsed = !sidebarCollapsed">
+            <el-icon><Fold /></el-icon>
+          </el-button>
           <div class="header-icon">
             <el-avatar :size="36" icon="ChatDotRound" style="background: #19c37d" />
           </div>
@@ -57,6 +95,9 @@
             </div>
             <!-- User Message -->
             <div v-else class="message-row user">
+              <div class="msg-avatar">
+                <el-avatar :size="34" icon="User" style="background: #5436da" />
+              </div>
               <div class="msg-body user-body">
                 <div class="msg-bubble user">
                   <div class="msg-plain-text">{{ msg.content }}</div>
@@ -68,9 +109,6 @@
                     </div>
                   </div>
                 </div>
-              </div>
-              <div class="msg-avatar">
-                <el-avatar :size="34" icon="User" style="background: #5436da" />
               </div>
             </div>
           </div>
@@ -125,11 +163,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Promotion, Document, CopyDocument, Delete, Paperclip, CloseBold } from '@element-plus/icons-vue'
+import {
+  Promotion, Document, CopyDocument, Delete, Paperclip,
+  CloseBold, Plus, Fold, ChatDotRound
+} from '@element-plus/icons-vue'
+import { useUserStore } from '@/store/userStore'
 import { invokeAgent } from '@/api/agent'
 import { listKnowledgeBases } from '@/api/knowledgeBase'
+import { listSessions, getMessages, saveMessage, deleteSession } from '@/api/conversation'
 import request from '@/api/request'
 import { getToken } from '@/utils/auth'
 import { marked } from 'marked'
@@ -141,6 +184,9 @@ const props = defineProps({
   agentType: { type: String, required: true }
 })
 
+const userStore = useUserStore()
+
+// ========== 基础响应式状态 ==========
 const inputText = ref('')
 const messages = ref([])
 const loading = ref(false)
@@ -150,42 +196,29 @@ const msgContainer = ref(null)
 const fileInputRef = ref(null)
 const uploadedFiles = ref([])
 
-const STORAGE_KEY = `chat_history_${props.agentType}`
+// ========== 侧边栏状态 ==========
+const sidebarCollapsed = ref(false)
+const sessions = ref([])
+const sessionsLoading = ref(false)
+const currentSessionId = ref('')
 
-const loadMessages = () => {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (saved) {
-      const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        messages.value = parsed
-        return true
-      }
-    }
-  } catch { /* ignore corrupt data */ }
-  return false
+// ========== 计算属性 ==========
+const studentId = computed(() => userStore.userInfo?.id || null)
+
+// ========== UUID 生成 ==========
+const generateUUID = () => {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16)
+  })
 }
 
-const saveMessages = () => {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.value))
-  } catch { /* ignore quota errors */ }
-}
-
-// Debounced save
-let saveTimer = null
-const scheduleSave = () => {
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(saveMessages, 300)
-}
-
-const studentId = computed(() => {
-  try {
-    const info = localStorage.getItem('userInfo')
-    return info ? JSON.parse(info).id : null
-  } catch { return null }
+// ========== 欢迎消息 ==========
+const welcomeMessage = computed(() => {
+  return `你好！我是 **${props.title}**。${props.subtitle ? props.subtitle : '请告诉我你的需求，我会尽力协助你。'}`
 })
 
+// ========== Markdown 渲染 ==========
 marked.setOptions({ breaks: true, gfm: true })
 
 const renderMarkdown = (content) => {
@@ -193,6 +226,84 @@ const renderMarkdown = (content) => {
   return marked.parse(content)
 }
 
+// ========== 侧边栏 - 获取会话列表 ==========
+const fetchSessions = async () => {
+  if (!studentId.value) return
+  sessionsLoading.value = true
+  try {
+    const res = await listSessions(props.agentType)
+    if (res.code === 200) {
+      sessions.value = res.data || []
+    } else {
+      console.warn('获取会话列表失败:', res.message)
+    }
+  } catch (e) {
+    console.error('获取会话列表异常:', e)
+  } finally {
+    sessionsLoading.value = false
+  }
+}
+
+// ========== 侧边栏 - 加载会话消息 ==========
+const loadSessionMessages = async (sessionId) => {
+  if (!studentId.value || !sessionId) return
+  try {
+    const res = await getMessages(sessionId)
+    if (res.code === 200) {
+      const historyMessages = (res.data || []).map(m => ({
+        role: m.messageRole,
+        content: m.messageContent
+      }))
+      messages.value = historyMessages
+      currentSessionId.value = sessionId
+    }
+  } catch (e) {
+    console.error('加载会话消息异常:', e)
+  }
+}
+
+// ========== 侧边栏 - 切换会话 ==========
+const switchToSession = (sessionId) => {
+  if (sessionId === currentSessionId.value) return
+  currentSessionId.value = sessionId
+  loadSessionMessages(sessionId)
+}
+
+// ========== 侧边栏 - 开启新对话 ==========
+const newChat = async () => {
+  currentSessionId.value = generateUUID()
+  messages.value = []
+  messages.value.push({ role: 'assistant', content: welcomeMessage.value })
+  await fetchSessions()
+}
+
+// ========== 侧边栏 - 删除会话 ==========
+const confirmDeleteSession = (sessionId) => {
+  ElMessageBox.confirm('确定要删除该历史对话吗？删除后不可恢复。', '确认删除', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
+  }).then(async () => {
+    try {
+      await deleteSession(sessionId)
+      ElMessage.success('对话已删除')
+      // 从列表中移除
+      sessions.value = sessions.value.filter(s => s.sessionId !== sessionId)
+      // 如果删除的是当前会话，切换到其他会话或新建
+      if (sessionId === currentSessionId.value) {
+        if (sessions.value.length > 0) {
+          await switchToSession(sessions.value[0].sessionId)
+        } else {
+          await newChat()
+        }
+      }
+    } catch {
+      ElMessage.error('删除失败')
+    }
+  }).catch(() => {})
+}
+
+// ========== 知识库加载 ==========
 const fetchKnowledgeBases = async () => {
   try {
     const res = await listKnowledgeBases()
@@ -202,6 +313,7 @@ const fetchKnowledgeBases = async () => {
   } catch { /* silent */ }
 }
 
+// ========== 滚动到底部 ==========
 const scrollToBottom = async () => {
   await nextTick()
   if (msgContainer.value) {
@@ -211,13 +323,12 @@ const scrollToBottom = async () => {
 
 watch(messages, () => {
   scrollToBottom()
-  scheduleSave()
 }, { deep: true })
 watch(loading, () => scrollToBottom())
 
+// ========== 构建上下文 ==========
 const buildContext = () => {
   if (messages.value.length === 0) return ''
-  // take all messages except the last user message (will be sent as input)
   const ctx = messages.value.map(m => {
     const role = m.role === 'user' ? '用户' : 'AI助手'
     let text = `${role}：${m.content}`
@@ -229,6 +340,7 @@ const buildContext = () => {
   return ctx.join('\n\n')
 }
 
+// ========== 发送消息 ==========
 const sendMessage = async () => {
   const text = inputText.value.trim()
   const files = [...uploadedFiles.value]
@@ -238,30 +350,67 @@ const sendMessage = async () => {
   }
   inputText.value = ''
 
-  // Add user message
-  messages.value.push({
-    role: 'user',
-    content: text,
-    files: files.length ? files.map(f => ({ name: f.name, url: f.url, type: f.type })) : undefined
-  })
+  // 1. 先构建上下文（使用当前消息列表）
+  const context = buildContext()
+
+  // 2. 保存用户消息到后端
+  if (studentId.value) {
+    try {
+      await saveMessage({
+        sessionId: currentSessionId.value,
+        role: 'user',
+        content: text,
+        agentType: props.agentType
+      })
+    } catch (e) {
+      console.error('保存用户消息失败:', e)
+    }
+  }
+
+  // 3. 添加到本地显示
+  const userMsg = { role: 'user', content: text }
+  if (files.length) {
+    userMsg.files = files.map(f => ({ name: f.name, url: f.url, type: f.type }))
+  }
+  messages.value.push(userMsg)
   uploadedFiles.value = []
   loading.value = true
 
+  // 4. 调用 AI 智能体
   try {
     const payload = {
       input: text,
-      context: buildContext(),
+      context: context,
       studentId: studentId.value
     }
     if (knowledgeBaseId.value) {
       payload.knowledgeBaseId = knowledgeBaseId.value
     }
     const res = await invokeAgent(props.agentType, payload)
-    if (res.code === 200) {
-      messages.value.push({ role: 'assistant', content: res.data })
-    } else {
-      messages.value.push({ role: 'assistant', content: '抱歉，生成失败：' + (res.message || '未知错误') })
+
+    const assistantContent = res.code === 200
+      ? res.data
+      : '抱歉，生成失败：' + (res.message || '未知错误')
+
+    // 5. 保存 AI 回复到后端
+    if (studentId.value) {
+      try {
+        await saveMessage({
+          sessionId: currentSessionId.value,
+          role: 'assistant',
+          content: assistantContent,
+          agentType: props.agentType
+        })
+      } catch (e) {
+        console.error('保存AI回复失败:', e)
+      }
     }
+
+    // 6. 添加到本地显示
+    messages.value.push({ role: 'assistant', content: assistantContent })
+
+    // 7. 刷新会话列表（更新标题和时间）
+    await fetchSessions()
   } catch (e) {
     messages.value.push({ role: 'assistant', content: '请求失败，请检查网络连接后重试。' })
   } finally {
@@ -269,15 +418,13 @@ const sendMessage = async () => {
   }
 }
 
+// ========== 快捷键 ==========
 const handleKeydown = (e) => {
-  if (e.shiftKey) {
-    // Shift+Enter: new line - don't prevent default
-    return
-  }
-  // Enter: send
+  if (e.shiftKey) return
   sendMessage()
 }
 
+// ========== 文件上传 ==========
 const triggerFileUpload = () => {
   fileInputRef.value?.click()
 }
@@ -285,7 +432,7 @@ const triggerFileUpload = () => {
 const onFileSelected = async (e) => {
   const files = e.target.files
   if (!files || !files.length) return
-  e.target.value = '' // reset so same file can be re-selected
+  e.target.value = ''
 
   for (const file of files) {
     try {
@@ -318,6 +465,7 @@ const removeFile = (idx) => {
   uploadedFiles.value.splice(idx, 1)
 }
 
+// ========== 工具函数 ==========
 const copyContent = async (content) => {
   try {
     await navigator.clipboard.writeText(content)
@@ -370,6 +518,7 @@ const downloadAsPPTX = async (content) => {
   }
 }
 
+// ========== 清空当前对话 ==========
 const confirmClear = () => {
   if (messages.value.length === 0) return
   ElMessageBox.confirm('确定要清空当前对话吗？', '确认', {
@@ -379,49 +528,180 @@ const confirmClear = () => {
   }).then(() => {
     messages.value = []
     uploadedFiles.value = []
-    localStorage.removeItem(STORAGE_KEY)
-    // Re-add welcome message
-    messages.value.push({
-      role: 'assistant',
-      content: `你好！我是 **${props.title}**。${props.subtitle ? props.subtitle : '请告诉我你的需求，我会尽力协助你。'}`
-    })
+    messages.value.push({ role: 'assistant', content: welcomeMessage.value })
     ElMessage.success('对话已清空')
   }).catch(() => {})
 }
 
-onMounted(() => {
+// ========== 生命周期 ==========
+onMounted(async () => {
   fetchKnowledgeBases()
-  // Load history, or show welcome message on first visit
-  if (!loadMessages()) {
-    messages.value.push({
-      role: 'assistant',
-      content: `你好！我是 **${props.title}**。${props.subtitle ? props.subtitle : '请告诉我你的需求，我会尽力协助你。'}`
-    })
-  }
-})
 
-onUnmounted(() => {
-  saveMessages()
+  if (studentId.value) {
+    // 有登录用户 - 从后端加载会话列表
+    await fetchSessions()
+    if (sessions.value.length > 0) {
+      // 自动加载第一个会话
+      currentSessionId.value = sessions.value[0].sessionId
+      await loadSessionMessages(currentSessionId.value)
+    } else {
+      // 无历史会话，显示欢迎消息
+      currentSessionId.value = generateUUID()
+      messages.value.push({ role: 'assistant', content: welcomeMessage.value })
+    }
+  } else {
+    // 未登录，显示欢迎消息
+    currentSessionId.value = generateUUID()
+    messages.value.push({ role: 'assistant', content: welcomeMessage.value })
+  }
 })
 </script>
 
 <style scoped>
+/* ========== 布局 ========== */
 .agent-chat {
   height: calc(100vh - 120px);
   display: flex;
-  justify-content: center;
   padding: 0;
+  background: #f0f2f5;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
 }
 
-.chat-container {
+/* ========== 左侧边栏 ========== */
+.sidebar {
+  width: 260px;
+  min-width: 260px;
+  background: #1e1e2d;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s, min-width 0.3s;
+  overflow: hidden;
+}
+
+.sidebar-collapsed {
+  width: 0;
+  min-width: 0;
+}
+
+.sidebar-header {
+  padding: 16px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.new-chat-btn {
   width: 100%;
-  max-width: 860px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  border-radius: 8px;
+  height: 40px;
+}
+
+.new-chat-btn .el-icon {
+  font-size: 16px;
+}
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.sidebar-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.session-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+  position: relative;
+  border-left: 3px solid transparent;
+}
+
+.session-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.session-item.active {
+  background: rgba(255, 255, 255, 0.1);
+  border-left-color: #19c37d;
+}
+
+.session-item.active .session-title {
+  color: #fff;
+}
+
+.session-info {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.session-title {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+.session-meta {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-top: 2px;
+}
+
+.delete-btn {
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.3) !important;
+  opacity: 0;
+  transition: opacity 0.2s, color 0.2s;
+  margin-left: 4px;
+}
+
+.session-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  color: #f56c6c !important;
+}
+
+.empty-sessions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 13px;
+}
+
+.empty-sessions p {
+  margin-top: 10px;
+}
+
+/* ========== 聊天容器 ========== */
+.chat-container {
+  flex: 1;
   display: flex;
   flex-direction: column;
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-  overflow: hidden;
+  min-width: 0;
 }
 
 /* Header */
@@ -437,7 +717,13 @@ onUnmounted(() => {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+}
+
+.sidebar-toggle {
+  font-size: 16px;
+  color: #666;
+  padding: 4px;
 }
 
 .header-info .header-title {
@@ -482,7 +768,9 @@ onUnmounted(() => {
 }
 
 .message-row.user {
-  flex-direction: row;
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+  gap: 10px;
 }
 
 .msg-avatar {
@@ -516,9 +804,10 @@ onUnmounted(() => {
 }
 
 .msg-bubble.user {
-  background: #5436da;
-  color: #fff;
+  background: #e8edff;
+  color: #333;
   border-top-right-radius: 4px;
+  border: 1px solid #cdd9f5;
 }
 
 .msg-plain-text {
@@ -536,10 +825,11 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.04);
   border-radius: 6px;
   padding: 4px 8px;
   font-size: 12px;
+  color: #666;
 }
 
 .file-thumb {
