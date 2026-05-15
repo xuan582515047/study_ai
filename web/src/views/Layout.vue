@@ -3,7 +3,7 @@
     <el-aside width="220px" class="sidebar">
       <div class="logo">
         <el-icon size="28" color="#409EFF"><Reading /></el-icon>
-        <span>StudyAI</span>
+        <span>智创学伴</span>
       </div>
       <el-menu :default-active="$route.path" router class="menu" background-color="#001529" text-color="#fff" active-text-color="#409EFF">
         <el-menu-item index="/dashboard">
@@ -12,7 +12,7 @@
         </el-menu-item>
         <el-menu-item index="/profile">
           <el-icon><User /></el-icon>
-          <span>画像构建</span>
+          <span>人物画像构建</span>
         </el-menu-item>
         <el-sub-menu index="/agent">
           <template #title>
